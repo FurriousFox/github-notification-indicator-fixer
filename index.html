@@ -55,14 +55,15 @@
         switch (notif_req.status) {
             case 401:
                 document.getElementById("progress").innerText =
-                    `Failed: Requires authentication (HTTP ${notif_req.status})\nyour PAT (personal access token) is invalid or doesn't have the right permissions`
+                    `Failed: Requires authentication (HTTP ${notif_req.status})\nyour PAT (personal access token) is invalid`
                 return;
             case 403:
-                document.getElementById("progress").innerText = `Failed: Forbidden (HTTP ${notif_req.status})`
+                document.getElementById("progress").innerText =
+                    `Failed: Forbidden (HTTP ${notif_req.status})\nyour PAT (personal access token) doesn't have the "notifications" permission`
                 return;
             case 422:
                 document.getElementById("progress").innerText =
-                    `Failed: Validation failed, or the endpoint has been spammed. (HTTP ${notif_req.status})`
+                    `Failed: Validation failed, or the endpoint has been spammed. (HTTP ${notif_req.status})\nrate limit probably exceeded, try again later`
                 return;
         }
 
