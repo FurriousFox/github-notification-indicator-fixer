@@ -1,0 +1,129 @@
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<form onsubmit="return pre_fix(event)" style="margin-bottom: 0px;">
+    <label for="github_pat"><a href="https://github.com/settings/tokens/new">GitHub PAT</a> ("notifications"
+        permission):</label>
+    <input type="text" id="github_pat">
+    <br>
+    <input type="submit" value="mark all as read">
+    <br>
+</form>
+<button onclick="fix(3)">mark all as done (also fixes &quot;2-0 of 2 at the bottom&quot;, and removes
+    the repositories from the list on the notification page)</button>
+
+<br><br>
+<a>Progress: <a id="progress">Not started</a></a>
+
+<script>
+    function parseLinkHeader(header) {
+        if (!header) return {};
+
+        return header.split(",").reduce((acc, part) => {
+            const match = part.match(/<([^>]+)>;\s*rel="([^"]+)"/);
+            if (match) {
+                const [, url, rel] = match;
+                acc[rel] = url;
+            }
+            return acc;
+        }, {});
+    }
+
+    function pre_fix(e) {
+        e.preventDefault();
+        fix();
+        return false;
+    }
+
+    async function fix(e) {
+        const pat = document.getElementById("github_pat").value;
+
+        document.getElementById("progress").innerText = `Fetching notifications...`
+
+        let notif_req;
+        const notifications = await (notif_req = await fetch(
+            "https://api.github.com/notifications?all=true", {
+                mode: "cors",
+                method: "GET",
+                headers: {
+                    "Authorization": `Bearer ${pat}`,
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                }
+            })).json()
+        let link = notif_req.headers.get("link")
+
+        switch (notif_req.status) {
+            case 401:
+                document.getElementById("progress").innerText =
+                    `Failed: Requires authentication (HTTP ${notif_req.status})\nyour PAT (personal access token) is invalid or doesn't have the right permissions`
+                return;
+            case 403:
+                document.getElementById("progress").innerText = `Failed: Forbidden (HTTP ${notif_req.status})`
+                return;
+            case 422:
+                document.getElementById("progress").innerText =
+                    `Failed: Validation failed, or the endpoint has been spammed. (HTTP ${notif_req.status})`
+                return;
+        }
+
+        while (link && parseLinkHeader(link).next) {
+            const notifications2 = await (notif_req = await fetch(
+                parseLinkHeader(link).next, {
+                    mode: "cors",
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${pat}`,
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28"
+                    }
+                })).json()
+
+            for (let notification of notifications2) {
+                notifications.push(notification)
+            }
+
+            link = notif_req.headers.get("link")
+        }
+
+        let progress = 0;
+        let progress_max = notifications.length;
+
+        function updateProgress() {
+            if (progress == progress_max) {
+                document.getElementById("progress").innerText = `Done! (${progress}/${progress_max})`
+            } else document.getElementById("progress").innerText = `${progress}/${progress_max}`
+        };
+        for (const notification of notifications) {
+            if (!notification.unread && e !== 3) {
+                progress++;
+                updateProgress();
+                continue;
+            }
+
+            await fetch(`https://api.github.com/notifications/threads/${notification.id}`, {
+                mode: "cors",
+                method: "PATCH",
+                headers: {
+                    "Authorization": `Bearer ${pat}`,
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                }
+            })
+
+            if (e === 3) {
+                await fetch(`https://api.github.com/notifications/threads/${notification.id}`, {
+                    mode: "cors",
+                    method: "DELETE",
+                    headers: {
+                        "Authorization": `Bearer ${pat}`,
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28"
+                    }
+                })
+            }
+
+            progress++;
+            updateProgress();
+        }
+    }
+</script>
